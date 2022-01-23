@@ -4,10 +4,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/base32"
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/blake2b"
 )
 
 type TWTMeta struct {
@@ -25,6 +29,23 @@ type Tweet struct {
 	Tweeter Tweeter
 	Created time.Time
 	Text    string
+}
+
+func (tweet *Tweet) Hash() string {
+	var authorURL string
+	if len(tweet.Tweeter.Meta.URLs) > 0 {
+		authorURL = tweet.Tweeter.Meta.URLs[0]
+	} else {
+		authorURL = tweet.Tweeter.URL
+	}
+
+	source := fmt.Sprintf("%s\n%s\n%s", authorURL, tweet.Created.Format(time.RFC3339), tweet.Text)
+	sum := blake2b.Sum256([]byte(source))
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding)
+	hash := strings.ToLower(encoded.EncodeToString(sum[:]))
+	hash = hash[len(hash)-7:]
+
+	return "#" + hash
 }
 
 // typedef to be able to attach sort methods
