@@ -10,10 +10,17 @@ import (
 	"time"
 )
 
+type TWTMeta struct {
+	Nick string
+	URLs []string
+}
+
 type Tweeter struct {
 	Nick string
 	URL  string
+	Meta TWTMeta
 }
+
 type Tweet struct {
 	Tweeter Tweeter
 	Created time.Time
@@ -53,7 +60,7 @@ func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
-			continue
+			parseTweeterMeta(&tweeter, line)
 		}
 		parts := re.FindStringSubmatch(line)
 		// "Submatch 0 is the match of the entire expression, submatch 1 the
@@ -74,6 +81,7 @@ func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
+
 	return tweets
 }
 
@@ -101,4 +109,25 @@ func ParseTime(timestr string) time.Time {
 		return time.Unix(0, 0)
 	}
 	return tm
+}
+
+// parseTweeterMeta parses twt file metadata and sets them
+// for the provided tweeter instance
+func parseTweeterMeta(tweeter *Tweeter, line string) {
+	re := regexp.MustCompile("^#\\s?(\\w+)\\s?=\\s?(.+)$")
+	items := re.FindStringSubmatch(line)
+
+	if len(items) < 3 { // full match, 1st match group, 2nd match group
+		return
+	}
+
+	meta := items[1]
+	value := items[2]
+
+	switch meta {
+	case "nick":
+		tweeter.Meta.Nick = value
+	case "url":
+		tweeter.Meta.URLs = append(tweeter.Meta.URLs, value)
+	}
 }
