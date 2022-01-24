@@ -231,15 +231,6 @@ interactively.
 		return fmt.Errorf("error parsing arguments")
 	}
 
-	twtfile := conf.Twtfile
-	if twtfile == "" {
-		return fmt.Errorf("cannot tweet without twtfile set in config")
-	}
-	// We don't support shell style ~user/foo.txt :P
-	if strings.HasPrefix(twtfile, "~/") {
-		twtfile = strings.Replace(twtfile, "~", homedir, 1)
-	}
-
 	var text string
 	if fs.NArg() == 0 {
 		var err error
@@ -249,24 +240,8 @@ interactively.
 	} else {
 		text = strings.Join(fs.Args(), " ")
 	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return fmt.Errorf("cowardly refusing to tweet empty text, or only spaces")
-	}
-	text = fmt.Sprintf("%s\t%s\n", time.Now().Format(time.RFC3339), ExpandMentions(text))
-	f, err := os.OpenFile(twtfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
-	var n int
-	if n, err = f.WriteString(text); err != nil {
-		return err
-	}
-	fmt.Printf("appended %d bytes to %s:\n%s", n, conf.Twtfile, text)
-
-	return nil
+	return writeTweet(text)
 }
 
 func getLine() (string, error) {
@@ -309,6 +284,38 @@ func getLine() (string, error) {
 	})
 
 	return l.Prompt("> ")
+}
+
+func writeTweet(text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fmt.Errorf("cowardly refusing to tweet empty text, or only spaces")
+	}
+
+	twtfile := conf.Twtfile
+	if twtfile == "" {
+		return fmt.Errorf("cannot tweet without twtfile set in config")
+	}
+	// We don't support shell style ~user/foo.txt :P
+	if strings.HasPrefix(twtfile, "~/") {
+		twtfile = strings.Replace(twtfile, "~", homedir, 1)
+	}
+
+	text = fmt.Sprintf("%s\t%s\n", time.Now().Format(time.RFC3339), ExpandMentions(text))
+
+	f, err := os.OpenFile(twtfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var n int
+	if n, err = f.WriteString(text); err != nil {
+		return err
+	}
+	fmt.Printf("appended %d bytes to %s:\n%s", n, conf.Twtfile, text)
+
+	return nil
 }
 
 // Turns "@nick" into "@<nick URL>" if we're following nick.
