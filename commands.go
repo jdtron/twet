@@ -244,6 +244,71 @@ interactively.
 	return writeTweet(text)
 }
 
+func ReplyCommand(args []string) error {
+	fs := flag.NewFlagSet("reply", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+	fs.Usage = func() {
+		fmt.Printf(`usage: %s reply TO [words]
+
+Adds a new tweet to your twtfile replying to a nick or twt hash.
+If no words are given, user will be prompted to input the text
+interactively.
+`, progname)
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return fmt.Errorf("error parsing arguments")
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("Can not reply without a twt hash")
+	}
+
+	hash := args[0]
+	cache := LoadCache(configpath)
+
+	// reverse lookup order to maybe find hash faster
+	exists := false
+	for _, cacheItem := range cache {
+		sort.Slice(cacheItem.Tweets, func(i, j int) bool {
+			return cacheItem.Tweets[i].Created.Unix() > cacheItem.Tweets[j].Created.Unix()
+		})
+
+		for ti := len(cacheItem.Tweets) - 1; ti >= 0; ti-- {
+			if cacheItem.Tweets[ti].Hash() == hash {
+				exists = true
+				break
+			}
+		}
+
+		if exists {
+			break
+		}
+	}
+
+	if !exists {
+		return fmt.Errorf("Twt hash %s not found. Are you sure it exists?", hash)
+	}
+
+	var text string
+	if len(args) < 2 {
+		var err error
+		if text, err = getLine(); err != nil {
+			return fmt.Errorf("readline: %v", err)
+		}
+	} else {
+		text = strings.Join(args, " ")
+	}
+
+	text = fmt.Sprintf("(%s) %s", hash, text)
+
+	return writeTweet(text)
+}
+
 func getLine() (string, error) {
 	l := liner.NewLiner()
 	defer l.Close()

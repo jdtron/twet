@@ -88,6 +88,22 @@ func main() {
 				log.Fatalf("error executing post tweet hook: %s", err)
 			}
 		}
+	case "reply":
+		if conf.Hooks.Pre != "" {
+			if _, err := execShell(homedir, conf.Hooks.Pre); err != nil {
+				log.Fatalf("error executing pre tweet hook: %s", err)
+			}
+		}
+
+		if err := ReplyCommand(flag.Args()[1:]); err != nil {
+			log.Fatal(err)
+		}
+
+		if conf.Hooks.Post != "" {
+			if _, err := execShell(homedir, conf.Hooks.Post); err != nil {
+				log.Fatalf("error executing post tweet hook: %s", err)
+			}
+		}
 	case "help":
 		switch flag.Arg(1) {
 		case "following":
@@ -100,6 +116,8 @@ func main() {
 			_ = TimelineCommand([]string{"-h"})
 		case "tweet", "twet":
 			_ = TweetCommand([]string{"-h"})
+		case "reply":
+			_ = ReplyCommand([]string{"-h"})
 		case "":
 			flag.Usage()
 			os.Exit(2)
