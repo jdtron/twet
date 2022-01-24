@@ -269,6 +269,10 @@ interactively.
 	}
 
 	hash := args[0]
+	if !strings.HasPrefix(hash, "#") {
+		hash = "#" + hash
+	}
+
 	cache := LoadCache(configpath)
 
 	// reverse lookup order to maybe find hash faster
@@ -291,7 +295,13 @@ interactively.
 	}
 
 	if !exists {
-		return fmt.Errorf("Twt hash %s not found. Are you sure it exists?", hash)
+		fmt.Printf("Twt hash %s is not in your timeline. Proceed? (y/N): ", hash)
+		var input string
+		fmt.Scanf("%s", &input)
+
+		if strings.ToLower(input) != "y" {
+			return fmt.Errorf("Aborted by user.")
+		}
 	}
 
 	var text string
@@ -301,7 +311,7 @@ interactively.
 			return fmt.Errorf("readline: %v", err)
 		}
 	} else {
-		text = strings.Join(args, " ")
+		text = strings.Join(args[1:], " ")
 	}
 
 	text = fmt.Sprintf("(%s) %s", hash, text)
