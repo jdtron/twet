@@ -45,11 +45,12 @@ func PrintTweet(tweet Tweet, now time.Time) {
 	if NormalizeURL(tweet.Tweeter.URL) == NormalizeURL(conf.Twturl) {
 		nick = boldgreen(tweet.Tweeter.Nick)
 	}
-	fmt.Printf("> %s (%s) [%s]\n%s\n",
+	fmt.Printf("> %s %s (%s)\n%s\n",
 		nick,
-		PrettyDuration(now.Sub(tweet.Created)),
 		tweet.Hash(),
-		text)
+		PrettyDuration(now.Sub(tweet.Created)),
+		text,
+	)
 }
 
 func PrintTweetRaw(tweet Tweet) {
