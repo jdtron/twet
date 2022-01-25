@@ -45,7 +45,7 @@ func (tweet *Tweet) Hash() string {
 	hash := strings.ToLower(encoded.EncodeToString(sum[:]))
 	hash = hash[len(hash)-7:]
 
-	return "#" + hash
+	return hash
 }
 
 // typedef to be able to attach sort methods
