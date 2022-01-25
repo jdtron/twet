@@ -31,6 +31,7 @@ Commands:
 	unfollow
 	timeline
 	tweet or twet
+	reply
 
 Use "%s help [command]" for more information about a command.
 
