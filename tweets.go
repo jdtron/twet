@@ -48,6 +48,16 @@ func (tweet *Tweet) Hash() string {
 	return hash
 }
 
+func (tweet *Tweet) RepliesTo(hash string) bool {
+	return strings.HasPrefix(tweet.Text, fmt.Sprintf("(#%s)", hash))
+}
+
+// Thread holds all tweets related to a hash (aka conversation or thread)
+type Thread struct {
+	Root    Tweet
+	Replies Tweets
+}
+
 // typedef to be able to attach sort methods
 type Tweets []Tweet
 
@@ -70,6 +80,25 @@ func (tweets Tweets) Tags() map[string]int {
 		}
 	}
 	return tags
+}
+
+func (tweets Tweets) Thread(hash string) Thread {
+	var thread Thread
+	hash = strings.Replace(hash, "#", "", 1)
+
+	if hash == "" {
+		return thread
+	}
+
+	for _, tweet := range tweets {
+		if tweet.Hash() == hash {
+			thread.Root = tweet
+		} else if tweet.RepliesTo(hash) {
+			thread.Replies = append(thread.Replies, tweet)
+		}
+	}
+
+	return thread
 }
 
 func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {

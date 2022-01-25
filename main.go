@@ -32,6 +32,7 @@ Commands:
 	timeline
 	tweet or twet
 	reply
+	thread
 
 Use "%s help [command]" for more information about a command.
 
@@ -105,6 +106,10 @@ func main() {
 				log.Fatalf("error executing post tweet hook: %s", err)
 			}
 		}
+	case "thread":
+		if err := ThreadCommand(flag.Args()[1:]); err != nil {
+			log.Fatal(err)
+		}
 	case "help":
 		switch flag.Arg(1) {
 		case "following":
@@ -119,6 +124,8 @@ func main() {
 			_ = TweetCommand([]string{"-h"})
 		case "reply":
 			_ = ReplyCommand([]string{"-h"})
+		case "thread":
+			_ = ThreadCommand([]string{"-h"})
 		case "":
 			flag.Usage()
 			os.Exit(2)

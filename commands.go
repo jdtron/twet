@@ -211,6 +211,92 @@ func TimelineCommand(args []string) error {
 	return nil
 }
 
+func ThreadCommand(args []string) error {
+	fs := flag.NewFlagSet("thread", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+	durationFlag := fs.Duration("d", 0, "only show tweets created at most `duration` back in time. Example: -d 12h")
+	dryFlag := fs.Bool("n", false, "dry-run, only locally cached tweets")
+	rawFlag := fs.Bool("r", false, "output tweets in URL-prefixed twtxt format")
+	reversedFlag := fs.Bool("desc", false, "tweets shown in descending order (newer tweets at top)")
+
+	fs.Usage = func() {
+		fmt.Printf("usage: %s thread [arguments]\n\nDisplays a thread and it's replies.\n\n", progname)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return fmt.Errorf("error parsing arguments")
+	}
+	if fs.NArg() > 1 {
+		return fmt.Errorf("too many arguments given")
+	}
+	if *durationFlag < 0 {
+		return fmt.Errorf("negative duration doesn't make sense")
+	}
+
+	cache := LoadCache(configpath)
+	cacheLastModified, err := CacheLastModified(configpath)
+	if err != nil {
+		return fmt.Errorf("error calculating last modified cache time: %s", err)
+	}
+
+	if !*dryFlag {
+		var sources = conf.Following
+
+		if conf.IncludeYourself {
+			sources[conf.Nick] = conf.Twturl
+		}
+
+		cache.FetchTweets(sources)
+		cache.Store(configpath)
+	}
+
+	if debug && *dryFlag {
+		log.Print("dry run\n")
+	}
+
+	var tweets Tweets
+	for _, url := range conf.Following {
+		tweets = append(tweets, cache.GetByURL(url)...)
+	}
+
+	hash := fs.Arg(0)
+	thread := tweets.Thread(hash)
+	if len(thread.Replies) == 0 {
+		return fmt.Errorf("Thread could not be found or is empty.")
+	}
+
+	now := time.Now()
+
+	if *reversedFlag {
+		sort.Sort(sort.Reverse(thread.Replies))
+	} else {
+		sort.Sort(thread.Replies)
+		PrintTweet(thread.Root, now)
+	}
+
+	for _, tweet := range thread.Replies {
+		if (*durationFlag > 0 && now.Sub(tweet.Created) <= *durationFlag) ||
+			(conf.Timeline == "full" && *durationFlag == 0) ||
+			(conf.Timeline == "new" && tweet.Created.Sub(cacheLastModified) >= 0) {
+			if !*rawFlag {
+				PrintTweet(tweet, now)
+			} else {
+				PrintTweetRaw(tweet)
+			}
+			fmt.Println()
+		}
+	}
+
+	if *reversedFlag {
+		PrintTweet(thread.Root, now)
+	}
+
+	return nil
+}
+
 func TweetCommand(args []string) error {
 	fs := flag.NewFlagSet("tweet", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
