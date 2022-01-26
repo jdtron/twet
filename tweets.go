@@ -29,6 +29,7 @@ type Tweet struct {
 	Tweeter Tweeter
 	Created time.Time
 	Text    string
+	Replies Tweets
 }
 
 func (tweet *Tweet) Hash() string {
@@ -50,6 +51,17 @@ func (tweet *Tweet) Hash() string {
 
 func (tweet *Tweet) RepliesTo(hash string) bool {
 	return strings.HasPrefix(tweet.Text, fmt.Sprintf("(#%s)", hash))
+}
+
+func (tweet *Tweet) ReplyingHash() string {
+	re := regexp.MustCompile("^\\(#(\\w{7})\\)")
+	matches := re.FindStringSubmatch(tweet.Text)
+
+	if len(matches) < 2 {
+		return ""
+	}
+
+	return matches[1]
 }
 
 // Thread holds all tweets related to a hash (aka conversation or thread)

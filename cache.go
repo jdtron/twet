@@ -27,6 +27,27 @@ type Cached struct {
 // key: url
 type Cache map[string]Cached
 
+func (cache Cache) AddCached(url string, cached Cached) {
+	cache[url] = cached
+	for _, tweet := range cached.Tweets {
+		cache.update(tweet)
+	}
+}
+
+func (cache *Cache) update(tweet Tweet) {
+	replyingTo := tweet.ReplyingHash()
+	if replyingTo == "" {
+		return
+	}
+
+	threadRoot := cache.GetByHash(replyingTo)
+	if threadRoot == nil {
+		return
+	}
+
+	threadRoot.Replies = append(threadRoot.Replies, tweet)
+}
+
 func (cache Cache) Store(configpath string) {
 	b := new(bytes.Buffer)
 	enc := gob.NewEncoder(b)
@@ -192,7 +213,7 @@ func ReadLocalFile(url, nick string, tweetsch chan<- Tweets, cache Cache, mu syn
 	tweets := ParseFile(scanner, Tweeter{Nick: nick, URL: url})
 	lastmodified := file.ModTime().String()
 	mu.Lock()
-	cache[url] = Cached{Tweets: tweets, Lastmodified: lastmodified}
+	cache.AddCached(url, Cached{Tweets: tweets, Lastmodified: lastmodified})
 	mu.Unlock()
 	tweetsch <- tweets
 	return nil
@@ -262,7 +283,7 @@ func FetchHTTP(url, nick string, tweetsch chan<- Tweets, cache Cache, mu sync.Lo
 		tweets = ParseFile(scanner, Tweeter{Nick: nick, URL: url})
 		lastmodified := resp.Header.Get("Last-Modified")
 		mu.Lock()
-		cache[url] = Cached{Tweets: tweets, Lastmodified: lastmodified}
+		cache.AddCached(url, Cached{Tweets: tweets, Lastmodified: lastmodified})
 		mu.Unlock()
 	case http.StatusNotModified: // 304
 		mu.Lock()
@@ -298,7 +319,7 @@ func FetchGemini(url, nick string, tweetsch chan<- Tweets, cache Cache, mu sync.
 	scanner := bufio.NewScanner(resp.Body)
 	tweets = ParseFile(scanner, Tweeter{Nick: nick, URL: url})
 	mu.Lock()
-	cache[url] = Cached{Tweets: tweets, Lastmodified: ""}
+	cache.AddCached(url, Cached{Tweets: tweets, Lastmodified: ""})
 	mu.Unlock()
 
 	tweetsch <- tweets
@@ -322,4 +343,16 @@ func (cache Cache) GetByURL(url string) Tweets {
 		return cached.Tweets
 	}
 	return Tweets{}
+}
+
+func (cache Cache) GetByHash(hash string) *Tweet {
+	for url, cached := range cache {
+		for i, tweet := range cached.Tweets {
+			if tweet.Hash() == hash {
+				return &cache[url].Tweets[i]
+			}
+		}
+	}
+
+	return nil
 }
