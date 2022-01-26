@@ -275,6 +275,7 @@ func ThreadCommand(args []string) error {
 	} else {
 		sort.Sort(thread.Replies)
 		PrintTweet(thread.Root, now)
+		fmt.Println()
 	}
 
 	for _, tweet := range thread.Replies {
@@ -292,6 +293,7 @@ func ThreadCommand(args []string) error {
 
 	if *reversedFlag {
 		PrintTweet(thread.Root, now)
+		fmt.Println()
 	}
 
 	return nil
