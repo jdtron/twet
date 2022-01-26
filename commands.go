@@ -211,6 +211,94 @@ func TimelineCommand(args []string) error {
 	return nil
 }
 
+func ThreadCommand(args []string) error {
+	fs := flag.NewFlagSet("thread", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+	durationFlag := fs.Duration("d", 0, "only show tweets created at most `duration` back in time. Example: -d 12h")
+	dryFlag := fs.Bool("n", false, "dry-run, only locally cached tweets")
+	rawFlag := fs.Bool("r", false, "output tweets in URL-prefixed twtxt format")
+	reversedFlag := fs.Bool("desc", false, "tweets shown in descending order (newer tweets at top)")
+
+	fs.Usage = func() {
+		fmt.Printf("usage: %s thread [arguments]\n\nDisplays a thread and it's replies.\n\n", progname)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return fmt.Errorf("error parsing arguments")
+	}
+	if fs.NArg() > 1 {
+		return fmt.Errorf("too many arguments given")
+	}
+	if *durationFlag < 0 {
+		return fmt.Errorf("negative duration doesn't make sense")
+	}
+
+	cache := LoadCache(configpath)
+	cacheLastModified, err := CacheLastModified(configpath)
+	if err != nil {
+		return fmt.Errorf("error calculating last modified cache time: %s", err)
+	}
+
+	if !*dryFlag {
+		var sources = conf.Following
+
+		if conf.IncludeYourself {
+			sources[conf.Nick] = conf.Twturl
+		}
+
+		cache.FetchTweets(sources)
+		cache.Store(configpath)
+	}
+
+	if debug && *dryFlag {
+		log.Print("dry run\n")
+	}
+
+	var tweets Tweets
+	for _, url := range conf.Following {
+		tweets = append(tweets, cache.GetByURL(url)...)
+	}
+
+	hash := fs.Arg(0)
+	thread := tweets.Thread(hash)
+	if len(thread.Replies) == 0 {
+		return fmt.Errorf("Thread could not be found or is empty.")
+	}
+
+	now := time.Now()
+
+	if *reversedFlag {
+		sort.Sort(sort.Reverse(thread.Replies))
+	} else {
+		sort.Sort(thread.Replies)
+		PrintTweet(thread.Root, now)
+		fmt.Println()
+	}
+
+	for _, tweet := range thread.Replies {
+		if (*durationFlag > 0 && now.Sub(tweet.Created) <= *durationFlag) ||
+			(conf.Timeline == "full" && *durationFlag == 0) ||
+			(conf.Timeline == "new" && tweet.Created.Sub(cacheLastModified) >= 0) {
+			if !*rawFlag {
+				PrintTweet(tweet, now)
+			} else {
+				PrintTweetRaw(tweet)
+			}
+			fmt.Println()
+		}
+	}
+
+	if *reversedFlag {
+		PrintTweet(thread.Root, now)
+		fmt.Println()
+	}
+
+	return nil
+}
+
 func TweetCommand(args []string) error {
 	fs := flag.NewFlagSet("tweet", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
@@ -231,15 +319,6 @@ interactively.
 		return fmt.Errorf("error parsing arguments")
 	}
 
-	twtfile := conf.Twtfile
-	if twtfile == "" {
-		return fmt.Errorf("cannot tweet without twtfile set in config")
-	}
-	// We don't support shell style ~user/foo.txt :P
-	if strings.HasPrefix(twtfile, "~/") {
-		twtfile = strings.Replace(twtfile, "~", homedir, 1)
-	}
-
 	var text string
 	if fs.NArg() == 0 {
 		var err error
@@ -249,24 +328,83 @@ interactively.
 	} else {
 		text = strings.Join(fs.Args(), " ")
 	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return fmt.Errorf("cowardly refusing to tweet empty text, or only spaces")
-	}
-	text = fmt.Sprintf("%s\t%s\n", time.Now().Format(time.RFC3339), ExpandMentions(text))
-	f, err := os.OpenFile(twtfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 
-	var n int
-	if n, err = f.WriteString(text); err != nil {
-		return err
-	}
-	fmt.Printf("appended %d bytes to %s:\n%s", n, conf.Twtfile, text)
+	return writeTweet(text)
+}
 
-	return nil
+func ReplyCommand(args []string) error {
+	fs := flag.NewFlagSet("reply", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+	fs.Usage = func() {
+		fmt.Printf(`usage: %s reply TO [words]
+
+Adds a new tweet to your twtfile replying to a nick or twt hash.
+If no words are given, user will be prompted to input the text
+interactively.
+`, progname)
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return fmt.Errorf("error parsing arguments")
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("Can not reply without a twt hash")
+	}
+
+	hash := args[0]
+	if !strings.HasPrefix(hash, "#") {
+		hash = "#" + hash
+	}
+
+	cache := LoadCache(configpath)
+
+	// reverse lookup order to maybe find hash faster
+	exists := false
+	for _, cacheItem := range cache {
+		sort.Slice(cacheItem.Tweets, func(i, j int) bool {
+			return cacheItem.Tweets[i].Created.Unix() > cacheItem.Tweets[j].Created.Unix()
+		})
+
+		for ti := len(cacheItem.Tweets) - 1; ti >= 0; ti-- {
+			if cacheItem.Tweets[ti].Hash() == hash {
+				exists = true
+				break
+			}
+		}
+
+		if exists {
+			break
+		}
+	}
+
+	if !exists {
+		fmt.Printf("Twt hash %s is not in your timeline. Proceed? (y/N): ", hash)
+		var input string
+		fmt.Scanf("%s", &input)
+
+		if strings.ToLower(input) != "y" {
+			return fmt.Errorf("Aborted by user.")
+		}
+	}
+
+	var text string
+	if len(args) < 2 {
+		var err error
+		if text, err = getLine(); err != nil {
+			return fmt.Errorf("readline: %v", err)
+		}
+	} else {
+		text = strings.Join(args[1:], " ")
+	}
+
+	text = fmt.Sprintf("(%s) %s", hash, text)
+
+	return writeTweet(text)
 }
 
 func getLine() (string, error) {
@@ -309,6 +447,38 @@ func getLine() (string, error) {
 	})
 
 	return l.Prompt("> ")
+}
+
+func writeTweet(text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return fmt.Errorf("cowardly refusing to tweet empty text, or only spaces")
+	}
+
+	twtfile := conf.Twtfile
+	if twtfile == "" {
+		return fmt.Errorf("cannot tweet without twtfile set in config")
+	}
+	// We don't support shell style ~user/foo.txt :P
+	if strings.HasPrefix(twtfile, "~/") {
+		twtfile = strings.Replace(twtfile, "~", homedir, 1)
+	}
+
+	text = fmt.Sprintf("%s\t%s\n", time.Now().Format(time.RFC3339), ExpandMentions(text))
+
+	f, err := os.OpenFile(twtfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var n int
+	if n, err = f.WriteString(text); err != nil {
+		return err
+	}
+	fmt.Printf("appended %d bytes to %s:\n%s", n, conf.Twtfile, text)
+
+	return nil
 }
 
 // Turns "@nick" into "@<nick URL>" if we're following nick.

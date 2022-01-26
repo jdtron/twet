@@ -4,20 +4,58 @@ package main
 
 import (
 	"bufio"
+	"encoding/base32"
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/blake2b"
 )
+
+type TWTMeta struct {
+	Nick string
+	URLs []string
+}
 
 type Tweeter struct {
 	Nick string
 	URL  string
+	Meta TWTMeta
 }
+
 type Tweet struct {
 	Tweeter Tweeter
 	Created time.Time
 	Text    string
+}
+
+func (tweet *Tweet) Hash() string {
+	var authorURL string
+	if len(tweet.Tweeter.Meta.URLs) > 0 {
+		authorURL = tweet.Tweeter.Meta.URLs[0]
+	} else {
+		authorURL = tweet.Tweeter.URL
+	}
+
+	source := fmt.Sprintf("%s\n%s\n%s", authorURL, tweet.Created.Format(time.RFC3339), tweet.Text)
+	sum := blake2b.Sum256([]byte(source))
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding)
+	hash := strings.ToLower(encoded.EncodeToString(sum[:]))
+	hash = hash[len(hash)-7:]
+
+	return hash
+}
+
+func (tweet *Tweet) RepliesTo(hash string) bool {
+	return strings.HasPrefix(tweet.Text, fmt.Sprintf("(#%s)", hash))
+}
+
+// Thread holds all tweets related to a hash (aka conversation or thread)
+type Thread struct {
+	Root    Tweet
+	Replies Tweets
 }
 
 // typedef to be able to attach sort methods
@@ -44,6 +82,25 @@ func (tweets Tweets) Tags() map[string]int {
 	return tags
 }
 
+func (tweets Tweets) Thread(hash string) Thread {
+	var thread Thread
+	hash = strings.Replace(hash, "#", "", 1)
+
+	if hash == "" {
+		return thread
+	}
+
+	for _, tweet := range tweets {
+		if tweet.Hash() == hash {
+			thread.Root = tweet
+		} else if tweet.RepliesTo(hash) {
+			thread.Replies = append(thread.Replies, tweet)
+		}
+	}
+
+	return thread
+}
+
 func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 	var tweets Tweets
 	re := regexp.MustCompile(`^(.+?)(\s+)(.+)$`) // .+? is ungreedy
@@ -53,7 +110,7 @@ func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
-			continue
+			parseTweeterMeta(&tweeter, line)
 		}
 		parts := re.FindStringSubmatch(line)
 		// "Submatch 0 is the match of the entire expression, submatch 1 the
@@ -74,6 +131,7 @@ func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
+
 	return tweets
 }
 
@@ -101,4 +159,25 @@ func ParseTime(timestr string) time.Time {
 		return time.Unix(0, 0)
 	}
 	return tm
+}
+
+// parseTweeterMeta parses twt file metadata and sets them
+// for the provided tweeter instance
+func parseTweeterMeta(tweeter *Tweeter, line string) {
+	re := regexp.MustCompile("^#\\s?(\\w+)\\s?=\\s?(.+)$")
+	items := re.FindStringSubmatch(line)
+
+	if len(items) < 3 { // full match, 1st match group, 2nd match group
+		return
+	}
+
+	meta := items[1]
+	value := items[2]
+
+	switch meta {
+	case "nick":
+		tweeter.Meta.Nick = value
+	case "url":
+		tweeter.Meta.URLs = append(tweeter.Meta.URLs, value)
+	}
 }
