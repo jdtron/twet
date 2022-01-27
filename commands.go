@@ -264,7 +264,7 @@ func ThreadCommand(args []string) error {
 
 	hash := fs.Arg(0)
 	thread := tweets.Thread(hash)
-	if len(thread.Replies) == 0 {
+	if len(thread.Replies) == 0 || thread.Root.Hash() != hash {
 		return fmt.Errorf("Thread could not be found or is empty.")
 	}
 
