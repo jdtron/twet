@@ -111,6 +111,7 @@ func ParseFile(scanner *bufio.Scanner, tweeter Tweeter) Tweets {
 		}
 		if strings.HasPrefix(line, "#") {
 			parseTweeterMeta(&tweeter, line)
+			continue
 		}
 		parts := re.FindStringSubmatch(line)
 		// "Submatch 0 is the match of the entire expression, submatch 1 the
