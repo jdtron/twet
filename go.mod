@@ -1,4 +1,4 @@
-module github.com/quite/twet
+module github.com/jdtron/twet
 
 go 1.12
 
