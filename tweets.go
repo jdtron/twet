@@ -39,7 +39,12 @@ func (tweet *Tweet) Hash() string {
 		authorURL = tweet.Tweeter.URL
 	}
 
-	source := fmt.Sprintf("%s\n%s\n%s", authorURL, tweet.Created.Format(time.RFC3339), tweet.Text)
+	return Hash(authorURL, tweet.Created, tweet.Text)
+
+}
+
+func Hash(author string, created time.Time, text string) string {
+	source := fmt.Sprintf("%s\n%s\n%s", author, created.Format(time.RFC3339), text)
 	sum := blake2b.Sum256([]byte(source))
 	encoded := base32.StdEncoding.WithPadding(base32.NoPadding)
 	hash := strings.ToLower(encoded.EncodeToString(sum[:]))

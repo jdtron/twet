@@ -329,7 +329,7 @@ interactively.
 		text = strings.Join(fs.Args(), " ")
 	}
 
-	return writeTweet(text)
+	return writeTweet(text, "")
 }
 
 func ReplyCommand(args []string) error {
@@ -402,9 +402,7 @@ interactively.
 		text = strings.Join(args[1:], " ")
 	}
 
-	text = fmt.Sprintf("(%s) %s", hash, text)
-
-	return writeTweet(text)
+	return writeTweet(text, hash)
 }
 
 func getLine() (string, error) {
@@ -449,7 +447,7 @@ func getLine() (string, error) {
 	return l.Prompt("> ")
 }
 
-func writeTweet(text string) error {
+func writeTweet(text, hash string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("cowardly refusing to tweet empty text, or only spaces")
@@ -464,7 +462,19 @@ func writeTweet(text string) error {
 		twtfile = strings.Replace(twtfile, "~", homedir, 1)
 	}
 
-	text = fmt.Sprintf("%s\t%s\n", time.Now().Format(time.RFC3339), ExpandMentions(text))
+	created := time.Now()
+
+	if hash == "" { // If it's a tweet and not a reply
+		var author string
+		if len(conf.Twturl) > 0 {
+			author = conf.Twturl
+		} else {
+			author = conf.Nick
+		}
+		hash = "#" + Hash(author, created, text)
+	}
+
+	text = fmt.Sprintf("%s\t(%s)\t%s\n", created.Format(time.RFC3339), hash, ExpandMentions(text))
 
 	f, err := os.OpenFile(twtfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
